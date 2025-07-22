@@ -32,11 +32,21 @@ jobs:
         TAILNET: ${{ secrets.TAILNET }}
       run: |
         # Get list of devices that have been offline for more than 7 days
-        OFFLINE_THRESHOLD=$(date -d '0 days ago' -u +%Y-%m-%dT%H:%M:%SZ)
+        OFFLINE_THRESHOLD=$(date -d '7 days ago' -u +%Y-%m-%dT%H:%M:%SZ)
+        
+        # Get devices list and check for errors
+        RESPONSE=$(curl -s -H "Authorization: Bearer $TAILSCALE_API_KEY" \
+          "https://api.tailscale.com/api/v2/tailnet/$TAILNET/devices")
+        
+        # Check if response is valid JSON
+        if ! echo "$RESPONSE" | jq empty 2>/dev/null; then
+          echo "Error: Invalid JSON response from Tailscale API"
+          echo "Response: $RESPONSE"
+          exit 1
+        fi
         
         # List all devices and filter offline ones with names starting with "claw-"
-        curl -s -H "Authorization: Bearer $TAILSCALE_API_KEY" \
-          "https://api.tailscale.com/api/v2/tailnet/$TAILNET/devices" | \
+        echo "$RESPONSE" | \
         jq -r --arg threshold "$OFFLINE_THRESHOLD" '
           .devices[] | 
           select(.lastSeen < $threshold and .online == false and (.name | startswith("claw-"))) |
