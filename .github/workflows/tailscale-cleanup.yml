@@ -36,7 +36,7 @@ jobs:
         echo "API_KEY length: ${#TAILSCALE_API_KEY}"
         
         # Get list of devices that have been offline for more than 7 days
-        OFFLINE_THRESHOLD=$(date -d '0 days ago' -u +%Y-%m-%dT%H:%M:%SZ)
+        OFFLINE_THRESHOLD=$(date -d '7 days ago' -u +%Y-%m-%dT%H:%M:%SZ)
         echo "Offline threshold: $OFFLINE_THRESHOLD"
         
         # Get devices list and check for errors
