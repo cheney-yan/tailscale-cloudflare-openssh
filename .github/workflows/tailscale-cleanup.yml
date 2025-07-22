@@ -50,9 +50,6 @@ jobs:
         
         echo "HTTP Status Code: $HTTP_CODE"
         echo "Response body length: ${#BODY}"
-        echo "Response body:"
-        echo "$BODY"
-        echo "---"
         
         # Check HTTP status
         if [ "$HTTP_CODE" != "200" ]; then
@@ -78,13 +75,17 @@ jobs:
         echo "All device names:"
         echo "$BODY" | jq -r '.devices[].name'
         
-        # Filter and show matching devices
-        echo "Devices matching criteria (offline > 7 days, name starts with 'claw-'):"
+        # Filter devices based on lastSeen time and name pattern only
+        # Remove devices that haven't been seen for more than 7 days and have "claw-" prefix
+        echo "Devices matching criteria (not seen > 7 days, name starts with 'claw-'):"
         MATCHING_DEVICES=$(echo "$BODY" | \
         jq -r --arg threshold "$OFFLINE_THRESHOLD" '
           .devices[] | 
-          select(.lastSeen < $threshold and .online == false and (.name | startswith("claw-"))) |
-          "\(.id) - \(.name) - last seen: \(.lastSeen)"
+          select(
+            (.lastSeen // "1970-01-01T00:00:00Z") < $threshold and 
+            (.name | startswith("claw-"))
+          ) |
+          "\(.id) - \(.name) - last seen: \(.lastSeen // "never")"
         ')
         
         if [ -z "$MATCHING_DEVICES" ]; then
@@ -96,7 +97,10 @@ jobs:
           echo "$BODY" | \
           jq -r --arg threshold "$OFFLINE_THRESHOLD" '
             .devices[] | 
-            select(.lastSeen < $threshold and .online == false and (.name | startswith("claw-"))) |
+            select(
+              (.lastSeen // "1970-01-01T00:00:00Z") < $threshold and 
+              (.name | startswith("claw-"))
+            ) |
             .id
           ' | while read device_id; do
             if [ -n "$device_id" ]; then
