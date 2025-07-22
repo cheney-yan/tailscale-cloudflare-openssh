@@ -44,27 +44,42 @@ jobs:
         RESPONSE=$(curl -s -w "HTTP_CODE:%{http_code}" -H "Authorization: Bearer $TAILSCALE_API_KEY" \
           "https://api.tailscale.com/api/v2/tailnet/$TAILNET/devices")
         
+        # Debug raw response
+        echo "Raw response:"
+        echo "$RESPONSE"
+        echo "---"
+        
         # Extract HTTP code and response body
         HTTP_CODE=$(echo "$RESPONSE" | grep -o "HTTP_CODE:[0-9]*" | cut -d: -f2)
         BODY=$(echo "$RESPONSE" | sed 's/HTTP_CODE:[0-9]*$//')
         
         echo "HTTP Status Code: $HTTP_CODE"
         echo "Response body length: ${#BODY}"
-        echo "First 200 chars of response: ${BODY:0:200}"
+        echo "Response body:"
+        echo "$BODY"
+        echo "---"
+        
+        # Check if body starts with expected characters
+        FIRST_CHAR=$(echo "$BODY" | head -c 1)
+        echo "First character of body: '$FIRST_CHAR'"
+        echo "Body hex dump (first 50 bytes):"
+        echo "$BODY" | head -c 50 | xxd
         
         # Check HTTP status
         if [ "$HTTP_CODE" != "200" ]; then
           echo "Error: HTTP $HTTP_CODE"
-          echo "Full response: $BODY"
           exit 1
         fi
         
         # Check if response is valid JSON
         if ! echo "$BODY" | jq empty 2>/dev/null; then
           echo "Error: Invalid JSON response"
-          echo "Full response: $BODY"
+          echo "jq error output:"
+          echo "$BODY" | jq empty 2>&1 || true
           exit 1
         fi
+        
+        echo "JSON validation passed"
         
         # Count total devices
         TOTAL_DEVICES=$(echo "$BODY" | jq '.devices | length')
