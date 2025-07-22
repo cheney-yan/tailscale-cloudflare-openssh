@@ -31,34 +31,78 @@ jobs:
         TAILSCALE_API_KEY: ${{ secrets.TAILSCALE_API_KEY }}
         TAILNET: ${{ secrets.TAILNET }}
       run: |
+        # Debug environment variables
+        echo "TAILNET: $TAILNET"
+        echo "API_KEY length: ${#TAILSCALE_API_KEY}"
+        
         # Get list of devices that have been offline for more than 7 days
-        OFFLINE_THRESHOLD=$(date -d '7 days ago' -u +%Y-%m-%dT%H:%M:%SZ)
+        OFFLINE_THRESHOLD=$(date -d '0 days ago' -u +%Y-%m-%dT%H:%M:%SZ)
+        echo "Offline threshold: $OFFLINE_THRESHOLD"
         
         # Get devices list and check for errors
-        RESPONSE=$(curl -s -H "Authorization: Bearer $TAILSCALE_API_KEY" \
+        echo "Making API request..."
+        RESPONSE=$(curl -s -w "HTTP_CODE:%{http_code}" -H "Authorization: Bearer $TAILSCALE_API_KEY" \
           "https://api.tailscale.com/api/v2/tailnet/$TAILNET/devices")
         
-        # Check if response is valid JSON
-        if ! echo "$RESPONSE" | jq empty 2>/dev/null; then
-          echo "Error: Invalid JSON response from Tailscale API"
-          echo "Response: $RESPONSE"
+        # Extract HTTP code and response body
+        HTTP_CODE=$(echo "$RESPONSE" | grep -o "HTTP_CODE:[0-9]*" | cut -d: -f2)
+        BODY=$(echo "$RESPONSE" | sed 's/HTTP_CODE:[0-9]*$//')
+        
+        echo "HTTP Status Code: $HTTP_CODE"
+        echo "Response body length: ${#BODY}"
+        echo "First 200 chars of response: ${BODY:0:200}"
+        
+        # Check HTTP status
+        if [ "$HTTP_CODE" != "200" ]; then
+          echo "Error: HTTP $HTTP_CODE"
+          echo "Full response: $BODY"
           exit 1
         fi
         
-        # List all devices and filter offline ones with names starting with "claw-"
-        echo "$RESPONSE" | \
+        # Check if response is valid JSON
+        if ! echo "$BODY" | jq empty 2>/dev/null; then
+          echo "Error: Invalid JSON response"
+          echo "Full response: $BODY"
+          exit 1
+        fi
+        
+        # Count total devices
+        TOTAL_DEVICES=$(echo "$BODY" | jq '.devices | length')
+        echo "Total devices found: $TOTAL_DEVICES"
+        
+        # List all device names for debugging
+        echo "All device names:"
+        echo "$BODY" | jq -r '.devices[].name'
+        
+        # Filter and show matching devices
+        echo "Devices matching criteria (offline > 7 days, name starts with 'claw-'):"
+        MATCHING_DEVICES=$(echo "$BODY" | \
         jq -r --arg threshold "$OFFLINE_THRESHOLD" '
           .devices[] | 
           select(.lastSeen < $threshold and .online == false and (.name | startswith("claw-"))) |
-          .id
-        ' | while read device_id; do
-          if [ -n "$device_id" ]; then
-            echo "Removing offline device: $device_id"
-            curl -X DELETE \
-              -H "Authorization: Bearer $TAILSCALE_API_KEY" \
-              "https://api.tailscale.com/api/v2/device/$device_id"
-          fi
-        done
+          "\(.id) - \(.name) - last seen: \(.lastSeen)"
+        ')
+        
+        if [ -z "$MATCHING_DEVICES" ]; then
+          echo "No devices match the cleanup criteria"
+        else
+          echo "$MATCHING_DEVICES"
+          
+          # Actually remove the devices
+          echo "$BODY" | \
+          jq -r --arg threshold "$OFFLINE_THRESHOLD" '
+            .devices[] | 
+            select(.lastSeen < $threshold and .online == false and (.name | startswith("claw-"))) |
+            .id
+          ' | while read device_id; do
+            if [ -n "$device_id" ]; then
+              echo "Removing offline device: $device_id"
+              curl -X DELETE \
+                -H "Authorization: Bearer $TAILSCALE_API_KEY" \
+                "https://api.tailscale.com/api/v2/device/$device_id"
+            fi
+          done
+        fi
         
     - name: Extend node key expirations
       env:
