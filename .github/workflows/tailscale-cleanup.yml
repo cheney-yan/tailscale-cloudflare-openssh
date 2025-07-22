@@ -41,13 +41,8 @@ jobs:
         
         # Get devices list and check for errors
         echo "Making API request..."
-        RESPONSE=$(curl -s -w "HTTP_CODE:%{http_code}" -H "Authorization: Bearer $TAILSCALE_API_KEY" \
+        RESPONSE=$(curl -s -L -w "HTTP_CODE:%{http_code}" -H "Authorization: Bearer $TAILSCALE_API_KEY" \
           "https://api.tailscale.com/api/v2/tailnet/$TAILNET/devices")
-        
-        # Debug raw response
-        echo "Raw response:"
-        echo "$RESPONSE"
-        echo "---"
         
         # Extract HTTP code and response body
         HTTP_CODE=$(echo "$RESPONSE" | grep -o "HTTP_CODE:[0-9]*" | cut -d: -f2)
@@ -58,12 +53,6 @@ jobs:
         echo "Response body:"
         echo "$BODY"
         echo "---"
-        
-        # Check if body starts with expected characters
-        FIRST_CHAR=$(echo "$BODY" | head -c 1)
-        echo "First character of body: '$FIRST_CHAR'"
-        echo "Body hex dump (first 50 bytes):"
-        echo "$BODY" | head -c 50 | xxd
         
         # Check HTTP status
         if [ "$HTTP_CODE" != "200" ]; then
@@ -112,7 +101,7 @@ jobs:
           ' | while read device_id; do
             if [ -n "$device_id" ]; then
               echo "Removing offline device: $device_id"
-              curl -X DELETE \
+              curl -L -X DELETE \
                 -H "Authorization: Bearer $TAILSCALE_API_KEY" \
                 "https://api.tailscale.com/api/v2/device/$device_id"
             fi
