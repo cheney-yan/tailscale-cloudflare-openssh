@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  secure-gateway:
+    # build: .
+    image: nightlybible/hysteria
+    ports:
+      - "${SSH_PORT:-2222}:${SSH_PORT:-22}"
+    environment:
+      - ROOT_PASSWORD=${ROOT_PASSWORD}
+      - SSH_PORT=${SSH_PORT:-22}
+      - SSH_PUBLIC_KEY=${SSH_PUBLIC_KEY}
+      - TAILSCALE_AUTHKEY=${TAILSCALE_AUTHKEY}
+      - TAILSCALE_HOSTNAME=${TAILSCALE_HOSTNAME:-docker-gateway}
+      - EXIT_NODE=${EXIT_NODE:-false}
+      - CLOUDFLARE_TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    volumes:
+      - tailscale_data:/var/lib/tailscale
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    devices:
+      - /dev/net/tun
+    restart: unless-stopped
+    privileged: true
+
+volumes:
+  tailscale_data:

@@ -1,0 +1,80 @@
+name: Tailscale Device Cleanup
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  cleanup-tailscale:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Install Tailscale CLI
+      run: |
+        curl -fsSL https://tailscale.com/install.sh | sh
+        
+    - name: Authenticate with Tailscale
+      env:
+        TAILSCALE_API_KEY: ${{ secrets.TAILSCALE_API_KEY }}
+      run: |
+        # Set API key for tailscale CLI
+        echo "$TAILSCALE_API_KEY" > /tmp/tailscale-api-key
+        export TAILSCALE_API_KEY_FILE=/tmp/tailscale-api-key
+        
+    - name: Clean up offline devices
+      env:
+        TAILSCALE_API_KEY: ${{ secrets.TAILSCALE_API_KEY }}
+        TAILNET: ${{ secrets.TAILNET }}
+      run: |
+        # Get list of devices that have been offline for more than 7 days
+        OFFLINE_THRESHOLD=$(date -d '7 days ago' -u +%Y-%m-%dT%H:%M:%SZ)
+        
+        # List all devices and filter offline ones
+        curl -s -H "Authorization: Bearer $TAILSCALE_API_KEY" \
+          "https://api.tailscale.com/api/v2/tailnet/$TAILNET/devices" | \
+        jq -r --arg threshold "$OFFLINE_THRESHOLD" '
+          .devices[] | 
+          select(.lastSeen < $threshold and .online == false) |
+          .id
+        ' | while read device_id; do
+          if [ -n "$device_id" ]; then
+            echo "Removing offline device: $device_id"
+            curl -X DELETE \
+              -H "Authorization: Bearer $TAILSCALE_API_KEY" \
+              "https://api.tailscale.com/api/v2/device/$device_id"
+          fi
+        done
+        
+    - name: Extend node key expirations
+      env:
+        TAILSCALE_API_KEY: ${{ secrets.TAILSCALE_API_KEY }}
+        TAILNET: ${{ secrets.TAILNET }}
+      run: |
+        # Get devices that will expire in the next 30 days
+        EXPIRY_THRESHOLD=$(date -d '30 days' -u +%Y-%m-%dT%H:%M:%SZ)
+        
+        curl -s -H "Authorization: Bearer $TAILSCALE_API_KEY" \
+          "https://api.tailscale.com/api/v2/tailnet/$TAILNET/devices" | \
+        jq -r --arg threshold "$EXPIRY_THRESHOLD" '
+          .devices[] | 
+          select(.keyExpiryDisabled == false and .expires < $threshold) |
+          .id
+        ' | while read device_id; do
+          if [ -n "$device_id" ]; then
+            echo "Extending key expiration for device: $device_id"
+            curl -X POST \
+              -H "Authorization: Bearer $TAILSCALE_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{"keyExpiryDisabled": true}' \
+              "https://api.tailscale.com/api/v2/device/$device_id/key"
+          fi
+        done
+        
+    - name: Cleanup temporary files
+      run: |
+        rm -f /tmp/tailscale-api-key
