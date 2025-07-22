@@ -34,12 +34,12 @@ jobs:
         # Get list of devices that have been offline for more than 7 days
         OFFLINE_THRESHOLD=$(date -d '7 days ago' -u +%Y-%m-%dT%H:%M:%SZ)
         
-        # List all devices and filter offline ones
+        # List all devices and filter offline ones with names starting with "claw-"
         curl -s -H "Authorization: Bearer $TAILSCALE_API_KEY" \
           "https://api.tailscale.com/api/v2/tailnet/$TAILNET/devices" | \
         jq -r --arg threshold "$OFFLINE_THRESHOLD" '
           .devices[] | 
-          select(.lastSeen < $threshold and .online == false) |
+          select(.lastSeen < $threshold and .online == false and (.name | startswith("claw-"))) |
           .id
         ' | while read device_id; do
           if [ -n "$device_id" ]; then
