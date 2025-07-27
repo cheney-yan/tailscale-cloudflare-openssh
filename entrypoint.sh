@@ -12,8 +12,11 @@ fi
 
 # Configure SSH public key if provided
 if [ -n "$SSH_PUBLIC_KEY" ]; then
+    mkdir -p /root/.ssh
     echo "$SSH_PUBLIC_KEY" > /root/.ssh/authorized_keys
+    chmod 700 /root/.ssh
     chmod 600 /root/.ssh/authorized_keys
+    chown root:root /root/.ssh
     chown root:root /root/.ssh/authorized_keys
 fi
 
@@ -28,8 +31,8 @@ if [ "$EXIT_NODE" = "true" ]; then
     sysctl -p
 fi
 
-# Start Tailscale daemon
-tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock &
+# Start Tailscale daemon with userspace networking (no TUN device required)
+tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock --tun=userspace-networking &
 
 # Authenticate with Tailscale if auth key provided
 if [ -n "$TAILSCALE_AUTHKEY" ]; then

@@ -3,7 +3,7 @@ version: '3.8'
 services:
   secure-gateway:
     # build: .
-    image: nightlybible/hysteria
+    image: nightlybible/secure-gateway
     ports:
       - "${SSH_PORT:-2222}:${SSH_PORT:-22}"
     environment:
